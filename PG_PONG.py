@@ -55,10 +55,10 @@ class PLNET:
         print(his)
         self.actions, self.states, self.rewards = [],[],[]        
     def saveModel(self):
-        self.model.save("/home/joel/PONG-PG/bestmodel")
+        self.model.save("bestmodel")
         print("Model saved!")
     def loadModel(self):
-        self.model = keras.models.load_model("/home/joel/PONG-PG/bestmodel/")
+        self.model = keras.models.load_model("bestmodel")
         
 
     def getPrediction(self, state):
@@ -69,17 +69,24 @@ class PLNET:
 if __name__ == "__main__":
     #game = FlappyBird(width=288, height=512, pipe_gap=100)
     game = Pong(500,500)
-    p = PLE(game, fps = 30, frame_skip = 3, display_screen=True)
+    ans = input("Displayscreen y/n? ")
+    displayscreen = False
+    if ans == "y":
+        displayscreen = True
+    p = PLE(game, fps = 30, frame_skip = 3, display_screen=displayscreen)
     p.init()
     state = []
     agent = PLNET(len(p.getActionSet()), len(p.getGameState()))
     ans = input("Use a pretrained model y/n?")
-    if ans is "Y":
+    if ans == "y":
         agent.loadModel()
+        print("Model loaded successfully!")
     avg_reward = 0
     total_time = 0
     max_t = -10000000
     max_reward = -10000000
+    rewards = []
+    times = []
     for episode in range(1,EPISODES+500000000000):
         p.reset_game()
         cumureward = 0
@@ -95,13 +102,19 @@ if __name__ == "__main__":
             t+=1
             cumureward += reward
             avg_reward += reward
-            if t % 10000 == 0:
-                agent.saveModel()
             if p.game_over() == True:
                 break
-        estimate_value_function = agent.discounted_reward()
+        if episode % 1000 == 0:
+            agent.saveModel()
         max_t = max(max_t, t)
         total_time += t
         max_reward = max(cumureward, max_reward)
-        print("Score: ",cumureward, " Avg score: ",avg_reward/episode, " Max score: " ,max_reward,"Time:", t," Max time: ", max_t, "Avg time: " ,total_time/episode, "Discounted reward max:", np.amax(estimate_value_function), " Min discounted reward: ", np.amin(estimate_value_function) ,"Discounted reward avg: ", np.mean(estimate_value_function) ," Episode:", episode)
-        agent.train(estimate_value_function)
+        rewards.append(cumureward)
+        times.append(t)
+        print("Score: ",cumureward, " Avg score: ",avg_reward/episode, " Max score: " ,max_reward,"Time:", t," Max time: ", max_t, " Avg time: " ,total_time/episode,  " Episode:", episode, " Total time", total_time)
+        if episode > 100:
+            cache = np.array(rewards)
+            print("Moving average of rewards last 100 episodes: ", np.convolve(cache[len(cache)-100:], np.ones(100), mode='valid')/100)
+            cache = np.array(times)
+            print("Moving average of time spent per episode last 100 episodes: ", np.convolve(cache[len(cache)-100:], np.ones(100), mode='valid')/100)
+        agent.train(agent.discounted_reward())
