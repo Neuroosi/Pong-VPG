@@ -8,7 +8,7 @@ from collections import deque
 from ple.games.pong import Pong
 from ple import PLE
 ##Hyperparameters
-learning_rate = 0.0001
+learning_rate = 0.001
 GAMMA = 0.99
 EPISODES = 5000
 
@@ -23,8 +23,8 @@ class PLNET:
         self.actions = []
     def create_model(self):
         model = Sequential()
-        model.add(Dense(256,input_shape = (self.obsSpaceSize,), activation = 'relu' ))
-        model.add(Dense(256, activation = 'relu'))
+        model.add(Dense(100,input_shape = (self.obsSpaceSize,), activation = 'relu' ))
+        #model.add(Dense(256, activation = 'relu'))
         ##model.add(Dense(64, activation = 'relu'))
         model.add(Dense(self.actionSpaceSize, activation = 'softmax'))
         model.compile(loss='categorical_crossentropy',optimizer=adam_v2.Adam(lr=learning_rate))
@@ -68,11 +68,14 @@ class PLNET:
 
 if __name__ == "__main__":
     #game = FlappyBird(width=288, height=512, pipe_gap=100)
-    game = Pong(500,500, MAX_SCORE = 2)
+    game = Pong(500,500)
     p = PLE(game, fps = 30, frame_skip = 3, display_screen=True)
     p.init()
     state = []
     agent = PLNET(len(p.getActionSet()), len(p.getGameState()))
+    ans = input("Use a pretrained model y/n?")
+    if ans is "Y":
+        agent.loadModel()
     avg_reward = 0
     total_time = 0
     max_t = -10000000
