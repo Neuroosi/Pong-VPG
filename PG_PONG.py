@@ -12,15 +12,36 @@ learning_rate = 0.001
 GAMMA = 0.99
 EPISODES = 5000
 
+class VALUEFUNCTION_ESTIMATOR:
+    def __init__(self, obsSpaceSize):
+        self.obsSpaceSize = obsSpaceSize
+        self.model = self.create_model()
+    
+    def create_model(self):
+        model = Sequential()
+        model.add(Dense(100,input_shape = (self.obsSpaceSize,), activation = 'relu' ))
+        #model.add(Dense(256, activation = 'relu'))
+        ##model.add(Dense(64, activation = 'relu'))
+        model.add(Dense(1, activation = 'linear'))
+        model.compile(loss='mse',optimizer=adam_v2.Adam(lr=learning_rate))
+        return model
+
+    def train(self, G, states):
+        print("VALUEFUNC_ESTIMATOR LOSS: ", self.model.train_on_batch(np.array(states), np.array(G)))
+
+    def getPrediction(self, states):
+        return self.model.predict_on_batch(states)
+    
+
 class PLNET:
-    def __init__(self, actionSpaceSize, obsSpaceSize):
+    def __init__(self,  actionSpaceSize, obsSpaceSize):
         self.actionSpaceSize = actionSpaceSize
         self.obsSpaceSize = obsSpaceSize
         self.model = self.create_model()
-        self.target_model = self.create_model()
         self.states = []
         self.rewards = []
         self.actions = []
+
     def create_model(self):
         model = Sequential()
         model.add(Dense(100,input_shape = (self.obsSpaceSize,), activation = 'relu' ))
@@ -59,6 +80,7 @@ class PLNET:
         print("Model saved!")
     def loadModel(self):
         self.model = keras.models.load_model("bestmodel")
+        print("Model loaded successfully!")
         
 
     def getPrediction(self, state):
@@ -77,10 +99,10 @@ if __name__ == "__main__":
     p.init()
     state = []
     agent = PLNET(len(p.getActionSet()), len(p.getGameState()))
-    ans = input("Use a pretrained model y/n?")
+    value_estimator = VALUEFUNCTION_ESTIMATOR(len(p.getGameState()))
+    ans = input("Use a pretrained model y/n ?")
     if ans == "y":
         agent.loadModel()
-        print("Model loaded successfully!")
     avg_reward = 0
     total_time = 0
     max_t = -10000000
@@ -117,4 +139,9 @@ if __name__ == "__main__":
             print("Moving average of rewards last 100 episodes: ", np.convolve(cache[len(cache)-100:], np.ones(100), mode='valid')/100)
             cache = np.array(times)
             print("Moving average of time spent per episode last 100 episodes: ", np.convolve(cache[len(cache)-100:], np.ones(100), mode='valid')/100)
-        agent.train(agent.discounted_reward())
+        G = agent.discounted_reward()
+        states = np.array(agent.states)
+        V_ESTIMATES = np.array(value_estimator.getPrediction(states))
+        V_ESTIMATES = np.squeeze(V_ESTIMATES)
+        agent.train(G-V_ESTIMATES)
+        value_estimator.train(G, states)
