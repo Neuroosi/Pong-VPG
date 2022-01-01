@@ -2,11 +2,14 @@ from keras.models import Sequential
 from keras.layers import Dense
 from keras.optimizers import adam_v2
 from tensorflow import keras
+import tensorflow.keras.backend as K 
 import random
 import numpy as np
 from collections import deque
 from ple.games.pong import Pong
 from ple import PLE
+import math
+
 ##Hyperparameters
 learning_rate = 0.001
 GAMMA = 0.99
@@ -14,7 +17,8 @@ EPISODES = 5000
 BETA = 0.01
 
 def loss_func(y_true, y_pred):
-    return keras.losses.CategoricalCrossentropy(y_true, y_pred)+BETA*np.sum(-y_pred*np.log(y_pred))
+    cce = keras.losses.CategoricalCrossentropy()
+    return cce(y_true, y_pred)+BETA*K.sum(-y_pred*K.log(y_pred))
 
 class VALUEFUNCTION_ESTIMATOR:
     def __init__(self, obsSpaceSize):
@@ -142,7 +146,7 @@ if __name__ == "__main__":
         max_reward = max(cumureward, max_reward)
         rewards.append(cumureward)
         times.append(t)
-        print("Score: ",cumureward, " Avg score: ",avg_reward/episode, " Max score: " ,max_reward,"Time:", t," Max time: ", max_t, " Avg time: " ,total_time/episode,  " Episode:", episode, " Total time", total_time)
+        print("Beta: ", BETA," Score: ",cumureward, " Avg score: ",avg_reward/episode, " Max score: " ,max_reward,"Time:", t," Max time: ", max_t, " Avg time: " ,total_time/episode,  " Episode:", episode, " Total time", total_time)
         if episode > 100:
             cache = np.array(rewards)
             print("Moving average of rewards last 100 episodes: ", np.convolve(cache[len(cache)-100:], np.ones(100), mode='valid')/100)
