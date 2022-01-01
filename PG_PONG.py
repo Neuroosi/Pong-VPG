@@ -11,6 +11,10 @@ from ple import PLE
 learning_rate = 0.001
 GAMMA = 0.99
 EPISODES = 5000
+BETA = 0.01
+
+def loss_func(y_true, y_pred):
+    return keras.losses.CategoricalCrossentropy(y_true, y_pred)+BETA*np.sum(-y_pred*np.log(y_pred))
 
 class VALUEFUNCTION_ESTIMATOR:
     def __init__(self, obsSpaceSize):
@@ -38,6 +42,7 @@ class PLNET:
         self.actionSpaceSize = actionSpaceSize
         self.obsSpaceSize = obsSpaceSize
         self.model = self.create_model()
+        self.entropy = []
         self.states = []
         self.rewards = []
         self.actions = []
@@ -45,11 +50,12 @@ class PLNET:
     def create_model(self):
         model = Sequential()
         model.add(Dense(100,input_shape = (self.obsSpaceSize,), activation = 'relu' ))
-        #model.add(Dense(256, activation = 'relu'))
+        #model.add(Dense(10, activation = 'relu'))
         ##model.add(Dense(64, activation = 'relu'))
         model.add(Dense(self.actionSpaceSize, activation = 'softmax'))
-        model.compile(loss='categorical_crossentropy',optimizer=adam_v2.Adam(lr=learning_rate))
+        model.compile(loss= loss_func,optimizer=adam_v2.Adam(lr=learning_rate))
         return model
+
 
     def update_sample(self, state, reward, action):
         self.states.append(state)
@@ -82,10 +88,13 @@ class PLNET:
         self.model = keras.models.load_model("bestmodel")
         print("Model loaded successfully!")
         
+    def calculate_entropy(self, probs):
+        return np.sum(-probs*np.log(probs))
 
     def getPrediction(self, state):
         probs = self.model.predict(np.array([state]))
         probs = np.squeeze(probs)
+        self.entropy.append(np.sum(-probs*np.log(probs)))##entropy
         return np.random.choice(self.actionSpaceSize, p = probs)
 
 if __name__ == "__main__":
