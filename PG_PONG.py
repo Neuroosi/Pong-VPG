@@ -2,35 +2,33 @@ from keras.models import Sequential
 from keras.layers import Dense
 from keras.optimizers import adam_v2
 from tensorflow import keras
-import tensorflow.keras.backend as K 
 import random
 import numpy as np
 from collections import deque
 from ple.games.pong import Pong
 from ple import PLE
 import math
+import skimage
+from collections import deque
 
 ##Hyperparameters
 learning_rate = 0.001
-GAMMA = 0.99
+GAMMA = 0.9
 EPISODES = 5000
-BETA = 0.01
-
-def loss_func(y_true, y_pred):
-    cce = keras.losses.CategoricalCrossentropy()
-    return cce(y_true, y_pred)+BETA*K.sum(-y_pred*K.log(y_pred))
+BATCH_SIZE = 5
 
 class VALUEFUNCTION_ESTIMATOR:
-    def __init__(self, obsSpaceSize):
-        self.obsSpaceSize = obsSpaceSize
+    def __init__(self):
         self.model = self.create_model()
     
     def create_model(self):
         model = Sequential()
-        model.add(Dense(100,input_shape = (self.obsSpaceSize,), activation = 'relu' ))
+        initializer = keras.initializers.HeNormal()
+        model.add(Dense(200,input_shape = (80*80,), activation = 'relu' ,kernel_initializer=initializer))
         #model.add(Dense(256, activation = 'relu'))
         ##model.add(Dense(64, activation = 'relu'))
-        model.add(Dense(1, activation = 'linear'))
+        initializer2 = keras.initializers.GlorotNormal()
+        model.add(Dense(1, activation = 'linear',kernel_initializer=initializer2))
         model.compile(loss='mse',optimizer=adam_v2.Adam(lr=learning_rate))
         return model
 
@@ -42,22 +40,22 @@ class VALUEFUNCTION_ESTIMATOR:
     
 
 class PLNET:
-    def __init__(self,  actionSpaceSize, obsSpaceSize):
+    def __init__(self,  actionSpaceSize):
         self.actionSpaceSize = actionSpaceSize
-        self.obsSpaceSize = obsSpaceSize
         self.model = self.create_model()
-        self.entropy = []
         self.states = []
         self.rewards = []
         self.actions = []
 
     def create_model(self):
         model = Sequential()
-        model.add(Dense(100,input_shape = (self.obsSpaceSize,), activation = 'relu' ))
+        initializer = keras.initializers.HeNormal()
+        model.add(Dense(200,input_shape = (80*80,), activation = 'relu' ,kernel_initializer=initializer))
         #model.add(Dense(10, activation = 'relu'))
         ##model.add(Dense(64, activation = 'relu'))
-        model.add(Dense(self.actionSpaceSize, activation = 'softmax'))
-        model.compile(loss= loss_func,optimizer=adam_v2.Adam(lr=learning_rate))
+        initializer2 = keras.initializers.GlorotNormal()
+        model.add(Dense(self.actionSpaceSize, activation = 'softmax',kernel_initializer=initializer2))
+        model.compile(loss= 'categorical_crossentropy',optimizer=adam_v2.Adam(lr=learning_rate))
         return model
 
 
@@ -91,15 +89,24 @@ class PLNET:
     def loadModel(self):
         self.model = keras.models.load_model("bestmodel")
         print("Model loaded successfully!")
-        
-    def calculate_entropy(self, probs):
-        return np.sum(-probs*np.log(probs))
 
     def getPrediction(self, state):
         probs = self.model.predict(np.array([state]))
         probs = np.squeeze(probs)
-        self.entropy.append(np.sum(-probs*np.log(probs)))##entropy
         return np.random.choice(self.actionSpaceSize, p = probs)
+
+
+def getFrame(p):
+    state = skimage.color.rgb2gray(p.getScreenRGB())
+    state = skimage.transform.resize(state, (80,80))
+    state = skimage.exposure.rescale_intensity(state,out_range=(0,255))
+    state[state != 0] = 1
+    return state
+
+def makeState(state):
+    cache = state[0]-state[1]-state[2]-state[3]
+    cache[cache != 0] = 1
+    return cache.flatten()
 
 if __name__ == "__main__":
     #game = FlappyBird(width=288, height=512, pipe_gap=100)
@@ -110,51 +117,40 @@ if __name__ == "__main__":
         displayscreen = True
     p = PLE(game, fps = 30, frame_skip = 3, display_screen=displayscreen)
     p.init()
-    state = []
-    agent = PLNET(len(p.getActionSet()), len(p.getGameState()))
-    value_estimator = VALUEFUNCTION_ESTIMATOR(len(p.getGameState()))
-    ans = input("Use a pretrained model y/n ?")
+    state = deque(maxlen = 4)
+    agent = PLNET(len(p.getActionSet()))
+    value_estimator = VALUEFUNCTION_ESTIMATOR()
+    ans = input("Use a pretrained model y/n? ")
     if ans == "y":
         agent.loadModel()
-    avg_reward = 0
     total_time = 0
-    max_t = -10000000
-    max_reward = -10000000
-    rewards = []
-    times = []
+    cumureward = 0
     for episode in range(1,EPISODES+500000000000):
         p.reset_game()
-        cumureward = 0
-        state = np.array(list(p.getGameState().values()))
+        state.append(getFrame(p))
+        state.append(getFrame(p))
+        state.append(getFrame(p))
+        state.append(getFrame(p))
         t = 0
         while True:
-            state = (state - np.mean(state))/np.std(state)
-            action = agent.getPrediction(state)
+            action = agent.getPrediction(makeState(state))
             reward = p.act(p.getActionSet()[action])
-            next_state = np.array(list(p.getGameState().values()))
-            agent.update_sample(state, reward, action)
-            state = next_state
+            agent.update_sample(makeState(state), reward, action)
+            state.append(getFrame(p))
             t+=1
             cumureward += reward
-            avg_reward += reward
             if p.game_over() == True:
                 break
         if episode % 1000 == 0:
             agent.saveModel()
-        max_t = max(max_t, t)
         total_time += t
-        max_reward = max(cumureward, max_reward)
-        rewards.append(cumureward)
-        times.append(t)
-        print("Beta: ", BETA," Score: ",cumureward, " Avg score: ",avg_reward/episode, " Max score: " ,max_reward,"Time:", t," Max time: ", max_t, " Avg time: " ,total_time/episode,  " Episode:", episode, " Total time", total_time)
-        if episode > 100:
-            cache = np.array(rewards)
-            print("Moving average of rewards last 100 episodes: ", np.convolve(cache[len(cache)-100:], np.ones(100), mode='valid')/100)
-            cache = np.array(times)
-            print("Moving average of time spent per episode last 100 episodes: ", np.convolve(cache[len(cache)-100:], np.ones(100), mode='valid')/100)
-        G = agent.discounted_reward()
-        states = np.array(agent.states)
-        V_ESTIMATES = np.array(value_estimator.getPrediction(states))
-        V_ESTIMATES = np.squeeze(V_ESTIMATES)
-        agent.train(G-V_ESTIMATES)
-        value_estimator.train(G, states)
+        if episode % BATCH_SIZE == 0:
+            print("Avg batch reward: ", cumureward/5, " Avg batch time: ", total_time/5, " Episode: ", episode/BATCH_SIZE)
+            G = agent.discounted_reward()
+            states = np.array(agent.states)
+            V_ESTIMATES = np.array(value_estimator.getPrediction(states))
+            V_ESTIMATES = np.squeeze(V_ESTIMATES)
+            agent.train(G-V_ESTIMATES)
+            value_estimator.train(G, states)
+            cumureward = 0
+            total_time = 0
