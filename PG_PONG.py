@@ -10,13 +10,14 @@ from ple import PLE
 import math
 import skimage
 from collections import deque
+from graphs import graph
 
 ##Hyperparameters
-learning_rate = 0.001
+learning_rate = 0.0001
 GAMMA = 0.9
 EPISODES = 5000
 BATCH_SIZE = 5
-
+D = 80
 class VALUEFUNCTION_ESTIMATOR:
     def __init__(self):
         self.model = self.create_model()
@@ -24,7 +25,7 @@ class VALUEFUNCTION_ESTIMATOR:
     def create_model(self):
         model = Sequential()
         initializer = keras.initializers.HeNormal()
-        model.add(Dense(200,input_shape = (80*80,), activation = 'relu' ,kernel_initializer=initializer))
+        model.add(Dense(200,input_shape = (D**2,), activation = 'relu' ,kernel_initializer=initializer))
         #model.add(Dense(256, activation = 'relu'))
         ##model.add(Dense(64, activation = 'relu'))
         initializer2 = keras.initializers.GlorotNormal()
@@ -40,8 +41,8 @@ class VALUEFUNCTION_ESTIMATOR:
     
 
 class PLNET:
-    def __init__(self,  actionSpaceSize):
-        self.actionSpaceSize = actionSpaceSize
+    def __init__(self):
+        self.actionSpaceSize = 2
         self.model = self.create_model()
         self.states = []
         self.rewards = []
@@ -50,7 +51,7 @@ class PLNET:
     def create_model(self):
         model = Sequential()
         initializer = keras.initializers.HeNormal()
-        model.add(Dense(200,input_shape = (80*80,), activation = 'relu' ,kernel_initializer=initializer))
+        model.add(Dense(200,input_shape = (D**2,), activation = 'relu' ,kernel_initializer=initializer))
         #model.add(Dense(10, activation = 'relu'))
         ##model.add(Dense(64, activation = 'relu'))
         initializer2 = keras.initializers.GlorotNormal()
@@ -98,7 +99,7 @@ class PLNET:
 
 def getFrame(p):
     state = skimage.color.rgb2gray(p.getScreenRGB())
-    state = skimage.transform.resize(state, (80,80))
+    state = skimage.transform.resize(state, (D,D))
     state = skimage.exposure.rescale_intensity(state,out_range=(0,255))
     state[state != 0] = 1
     return state
@@ -111,14 +112,12 @@ def makeState(state):
 if __name__ == "__main__":
     #game = FlappyBird(width=288, height=512, pipe_gap=100)
     game = Pong(500,500)
-    ans = input("Displayscreen y/n? ")
-    displayscreen = False
-    if ans == "y":
-        displayscreen = True
-    p = PLE(game, fps = 30, frame_skip = 3, display_screen=displayscreen)
+    rewards = []
+    avgrewards = []
+    p = PLE(game, fps = 30, frame_skip = 4, display_screen=True)
     p.init()
     state = deque(maxlen = 4)
-    agent = PLNET(len(p.getActionSet()))
+    agent = PLNET()
     value_estimator = VALUEFUNCTION_ESTIMATOR()
     ans = input("Use a pretrained model y/n? ")
     if ans == "y":
@@ -131,26 +130,25 @@ if __name__ == "__main__":
         state.append(getFrame(p))
         state.append(getFrame(p))
         state.append(getFrame(p))
-        t = 0
         while True:
             action = agent.getPrediction(makeState(state))
             reward = p.act(p.getActionSet()[action])
             agent.update_sample(makeState(state), reward, action)
             state.append(getFrame(p))
-            t+=1
             cumureward += reward
+            total_time += 1
             if p.game_over() == True:
                 break
         if episode % 1000 == 0:
             agent.saveModel()
-        total_time += t
+            graph(rewards,"fetajuusto/VPG-PONG")
         if episode % BATCH_SIZE == 0:
-            print("Avg batch reward: ", cumureward/5, " Avg batch time: ", total_time/5, " Episode: ", episode/BATCH_SIZE)
+            print("Avg batch reward: ", cumureward/5, " Episode: ", episode/BATCH_SIZE, " Steps: ", total_time)
             G = agent.discounted_reward()
             states = np.array(agent.states)
             V_ESTIMATES = np.array(value_estimator.getPrediction(states))
             V_ESTIMATES = np.squeeze(V_ESTIMATES)
             agent.train(G-V_ESTIMATES)
             value_estimator.train(G, states)
+            rewards.append(cumureward/5)
             cumureward = 0
-            total_time = 0
